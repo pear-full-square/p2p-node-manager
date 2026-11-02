@@ -37,7 +37,7 @@
 // state.json its cache. node.stderr stays a text file.
 
 import { spawn, execFile, execFileSync } from 'node:child_process'
-import { mkdirSync, writeFileSync, createWriteStream, existsSync } from 'node:fs'
+import { mkdirSync, writeFileSync, renameSync, createWriteStream, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { openTopic, folderStorage, committedOffsets } from '../mycelium-topic/index.js'
 import crypto from 'hypercore-crypto'
@@ -87,7 +87,12 @@ export async function manageNode ({ folder, vault, image, network, ip, swarm, na
   // reducer's fold, kept as it goes and cached in state.json.
   let state = null
   let produced = Promise.resolve()
-  const saveState = () => writeFileSync(join(folder, 'state.json'), JSON.stringify(state, null, 2) + '\n')
+  // Written whole, by temporary file and rename: a reader never sees it
+  // half written.
+  const saveState = () => {
+    writeFileSync(join(folder, 'state.json.tmp'), JSON.stringify(state, null, 2) + '\n')
+    renameSync(join(folder, 'state.json.tmp'), join(folder, 'state.json'))
+  }
   const record = (kind, facts = {}) => {
     const value = { module: 'p2p-node-manager', kind, time: Date.now(), ...facts }
     state = reduceNodeState(state, value)
@@ -124,7 +129,7 @@ export async function manageNode ({ folder, vault, image, network, ip, swarm, na
     : ['--role=join', '--app=/code/app', `--bootstrap=${joining.bootstrap}`, `--master=${joining.master}`,
         `--packages-key=${joining.packages.key}`, `--packages-commit=${joining.packages.commit}`, `--packages-uri=${joining.packages.uri}`]
   docker('create', '--name', container, '--network', aux.network, '--ip', aux.ip, ...hardening,
-    '--entrypoint', 'bare', image, '/app/p2p-node/cli.js', 'boot',
+    '--entrypoint', 'bare', image, '/app/pear-full-square/p2p-node/cli.js', 'boot',
     `--swarm=${swarm}`, `--name=${name}`, `--host=${ip}`, '--storage=/data/store',
     `--aux-host=${aux.ip}`, `--aux-bootstrap=${aux.gateway}:${aux.port}`, `--manager=${provision.publicKey}`,
     ...roleFlags, ...(observer ? ['--observer=true'] : []), `--metrics-every=${metricsEvery}`)
